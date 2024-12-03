@@ -2,13 +2,20 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::adsr::ADSR;
-use crate::waveform;
+use crate::filter::Filter;
+use crate::filter::FilterTypes;
+use crate::filter::HighPassFilter;
+use crate::filter::LowPassFilter;
 use crate::waveform::Waveform;
 
 pub struct Visualizer {
     pub audio_data: Arc<Mutex<Vec<f32>>>,
     pub adsr: Arc<Mutex<ADSR>>,
     pub waveform: Arc<Mutex<Waveform>>,
+    pub filters: Arc<Mutex<Vec<Box<dyn Filter + Send + Sync>>>>,
+    pub filter_select: FilterTypes,
+    pub filter_cutoff: f32,
+    pub sample_rate: f32,
 }
 
 impl eframe::App for Visualizer {
@@ -54,6 +61,7 @@ impl eframe::App for Visualizer {
 
         let mut adsr = self.adsr.lock().unwrap();
         let mut waveform = self.waveform.lock().unwrap();
+        let mut filters = self.filters.lock().unwrap();
 
         egui::Window::new("ADSR").show(ctx, |ui| {
             ui.label("ADSR");
@@ -65,7 +73,7 @@ impl eframe::App for Visualizer {
 
         egui::Window::new("Waveform").show(ctx, |ui| {
             ui.label("Waveform");
-            egui::ComboBox::from_label("Type: ")
+            egui::ComboBox::from_label("Type")
                 .selected_text(format!("{:?}", &waveform))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut *waveform, Waveform::Sine, "Sine");
@@ -74,6 +82,39 @@ impl eframe::App for Visualizer {
                 });
         });
 
+        egui::Window::new("Filter").show(ctx, |ui| {
+            egui::ComboBox::from_label("Type")
+                .selected_text(format!("{:?}", &self.filter_select))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.filter_select, FilterTypes::High, "High pass");
+                    ui.selectable_value(&mut self.filter_select, FilterTypes::Low, "Low pass");
+                });
+            ui.add(egui::Slider::new(&mut self.filter_cutoff, 0.0..=1000.0));
+            if ui.add(egui::Button::new("Add Filter")).clicked() {
+                let filter: Box<dyn Filter + Send + Sync> = match self.filter_select {
+                    FilterTypes::High => {
+                        Box::new(HighPassFilter::new(self.filter_cutoff, self.sample_rate))
+                    }
+                    FilterTypes::Low => {
+                        Box::new(LowPassFilter::new(self.filter_cutoff, self.sample_rate))
+                    }
+                };
+                filters.push(filter);
+            }
+
+            let mut to_remove = vec![];
+
+            ui.collapsing("Filters: ", |ui| {
+                for (i, _) in filters.iter().enumerate() {
+                    if ui.add(egui::Button::new(format!("{}: ", i))).clicked() {
+                        to_remove.push(i);
+                    }
+                }
+            });
+            to_remove.iter().for_each(|i| {
+                filters.remove(*i);
+            });
+        });
 
         ctx.request_repaint();
     }

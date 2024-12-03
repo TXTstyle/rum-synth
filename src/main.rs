@@ -1,9 +1,11 @@
 mod adsr;
+mod filter;
 mod visualizer;
 mod waveform;
 
 use adsr::ADSR;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use filter::Filter;
 use std::{
     sync::{Arc, Mutex},
     thread,
@@ -18,18 +20,22 @@ fn main() -> Result<(), eframe::Error> {
     let adsr = Arc::new(Mutex::new(adsr));
 
     let waveform = Arc::new(Mutex::new(Waveform::Sine));
+    let filters: Arc<Mutex<Vec<Box<dyn Filter + Send + Sync>>>> = Arc::new(Mutex::new(Vec::new()));
 
     let audio_data_clone = audio_data.clone();
     let adsr_data_clone = adsr.clone();
     let waveform_data_clone = waveform.clone();
-    std::thread::spawn(move || {
-        let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .expect("No output device available");
-        let config = device.default_output_config().unwrap();
-        let sample_rate = config.sample_rate().0 as f32;
+    let filters_data_clone = filters.clone();
 
+
+    let host = cpal::default_host();
+    let device = host
+        .default_output_device()
+        .expect("No output device available");
+    let config = device.default_output_config().unwrap();
+    let sample_rate = config.sample_rate().0 as f32;
+
+    std::thread::spawn(move || {
         let mut phase = 0.0;
         let frequency = 440.0;
         let mut time_sec = 0.0;
@@ -45,6 +51,7 @@ fn main() -> Result<(), eframe::Error> {
                     let mut local_data = audio_data_clone.lock().unwrap();
                     let local_adsr = adsr_data_clone.lock().unwrap();
                     let local_waveform = waveform_data_clone.lock().unwrap();
+                    let mut local_filters = filters_data_clone.lock().unwrap();
                     local_data.clear();
                     for sample in data.iter_mut() {
                         let time = time_sec;
@@ -53,6 +60,9 @@ fn main() -> Result<(), eframe::Error> {
 
                         let amplitude = local_adsr.apply(time, note_on, note_off_time);
                         *sample = sine_wave * amplitude;
+                        for filter in local_filters.iter_mut() {
+                            *sample = filter.apply(*sample);
+                        }
 
                         local_data.push(*sample);
 
@@ -90,6 +100,10 @@ fn main() -> Result<(), eframe::Error> {
                 audio_data,
                 adsr,
                 waveform,
+                filter_select: filter::FilterTypes::High,
+                filters,
+                filter_cutoff: 0.0,
+                sample_rate,
             }))
         }),
     )
