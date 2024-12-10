@@ -6,16 +6,16 @@ use crate::filter::Filter;
 use crate::filter::FilterTypes;
 use crate::filter::HighPassFilter;
 use crate::filter::LowPassFilter;
+use crate::waveform::Wave;
 use crate::waveform::Waveform;
 
 pub struct Visualizer {
     pub audio_data: Arc<Mutex<Vec<f32>>>,
     pub adsr: Arc<Mutex<ADSR>>,
-    pub waveform: Arc<Mutex<Waveform>>,
+    pub wave: Arc<Mutex<Wave>>,
     pub filters: Arc<Mutex<Vec<Box<dyn Filter + Send + Sync>>>>,
     pub filter_select: FilterTypes,
     pub filter_cutoff: f32,
-    pub sample_rate: f32,
 }
 
 impl eframe::App for Visualizer {
@@ -60,7 +60,7 @@ impl eframe::App for Visualizer {
         });
 
         let mut adsr = self.adsr.lock().unwrap();
-        let mut waveform = self.waveform.lock().unwrap();
+        let mut wave = self.wave.lock().unwrap();
         let mut filters = self.filters.lock().unwrap();
 
         egui::Window::new("ADSR").show(ctx, |ui| {
@@ -74,12 +74,14 @@ impl eframe::App for Visualizer {
         egui::Window::new("Waveform").show(ctx, |ui| {
             ui.label("Waveform");
             egui::ComboBox::from_label("Type")
-                .selected_text(format!("{:?}", &waveform))
+                .selected_text(format!("{:?}", &wave.waveform))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut *waveform, Waveform::Sine, "Sine");
-                    ui.selectable_value(&mut *waveform, Waveform::Square, "Square");
-                    ui.selectable_value(&mut *waveform, Waveform::Sawtooth, "Sawtooth");
+                    ui.selectable_value(&mut wave.waveform, Waveform::Sine, "Sine");
+                    ui.selectable_value(&mut wave.waveform, Waveform::Square, "Square");
+                    ui.selectable_value(&mut wave.waveform, Waveform::Sawtooth, "Sawtooth");
                 });
+            ui.label("Frequency");
+            ui.add(egui::Slider::new(&mut wave.frequency, 0.0..=1000.0));
         });
 
         egui::Window::new("Filter").show(ctx, |ui| {
@@ -93,10 +95,10 @@ impl eframe::App for Visualizer {
             if ui.add(egui::Button::new("Add Filter")).clicked() {
                 let filter: Box<dyn Filter + Send + Sync> = match self.filter_select {
                     FilterTypes::High => {
-                        Box::new(HighPassFilter::new(self.filter_cutoff, self.sample_rate))
+                        Box::new(HighPassFilter::new(self.filter_cutoff, wave.sample_rate))
                     }
                     FilterTypes::Low => {
-                        Box::new(LowPassFilter::new(self.filter_cutoff, self.sample_rate))
+                        Box::new(LowPassFilter::new(self.filter_cutoff, wave.sample_rate))
                     }
                 };
                 filters.push(filter);
