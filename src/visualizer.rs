@@ -40,6 +40,7 @@ pub struct Visualizer {
     pub filter_cutoff: f32,
     pub window_state: WindowState,
     pub note_state: Arc<Mutex<NoteState>>,
+    pub key_down: bool,
 }
 
 impl eframe::App for Visualizer {
@@ -170,12 +171,14 @@ impl eframe::App for Visualizer {
 
         let mut note_state = self.note_state.lock().unwrap();
 
-        if ctx.input(|i| i.key_pressed(egui::Key::A)) {
+        if ctx.input(|i| i.key_down(egui::Key::A) && !self.key_down) {
             note_state.note_on();
+            self.key_down = true;
         }
 
         if ctx.input(|i| i.key_released(egui::Key::A)) {
             note_state.note_off();
+            self.key_down = false;
         }
         
         egui::Area::new(egui::Id::new("DEBUG"))

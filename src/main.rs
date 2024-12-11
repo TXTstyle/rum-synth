@@ -18,8 +18,8 @@ use waveform::{Wave, Waveform};
 /// time represents the time since the note changed state.
 #[derive(Debug, Clone)]
 pub struct NoteState {
-    pub active: bool,
-    pub time: f32,
+    active: bool,
+    time: f32,
 }
 
 impl Default for NoteState {
@@ -131,6 +131,7 @@ fn main() -> Result<(), eframe::Error> {
                 filter_cutoff: 0.0,
                 window_state: WindowState::default(),
                 note_state,
+                key_down: false,
             }))
         }),
     )
