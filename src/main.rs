@@ -14,6 +14,7 @@ use std::{
 use visualizer::{Visualizer, WindowState};
 use waveform::{Wave, Waveform};
 
+#[derive(Debug)]
 pub struct NoteState {
     pub note_on: bool,
     pub note_off_time: Option<f32>,
@@ -46,9 +47,9 @@ fn main() -> Result<(), eframe::Error> {
     let config = device.default_output_config().unwrap();
     let sample_rate = config.sample_rate().0 as f32;
 
-    let wave = Wave::new(440., sample_rate, Waveform::Sine);
-    let wave = Arc::new(Mutex::new(wave));
-    let wave_data_clone = wave.clone();
+    let waves: Vec<Wave> = vec![Wave::new(440.0, sample_rate, Waveform::Sine)];
+    let waves = Arc::new(Mutex::new(waves));
+    let wave_data_clone = waves.clone();
 
     let note_state = NoteState::default();
     let note_state = Arc::new(Mutex::new(note_state));
@@ -72,18 +73,29 @@ fn main() -> Result<(), eframe::Error> {
                     for sample in data.iter_mut() {
                         let time = time_sec;
 
-                        *sample = local_wave.apply(phase);
+                        let mut wave_iter = local_wave.iter();
+                        let first_wave = wave_iter.next().unwrap();
+                        *sample = first_wave.apply(phase);
 
-                        *sample *= local_adsr.apply(time, local_note.note_on, local_note.note_off_time);
+                        for wave in wave_iter {
+                            *sample += wave.apply(phase);
+                        }
+
+                        *sample *=
+                            local_adsr.apply(time, local_note.note_on, local_note.note_off_time);
                         for filter in local_filters.iter_mut() {
                             *sample = filter.apply(*sample);
                         }
 
                         local_data.push(*sample);
 
-                        phase = (phase + local_wave.frequency / sample_rate) % 1.0;
+                        for wave in local_wave.iter() {
+                            phase = (phase + wave.frequency / sample_rate) % 1.0;
+                        }
+
+
                         time_sec += 1.0 / sample_rate;
-                        
+
                         if let Some(off_time) = local_note.note_off_time {
                             if off_time == 1.0 {
                                 local_note.note_off_time = Some(time_sec);
@@ -109,7 +121,7 @@ fn main() -> Result<(), eframe::Error> {
             Ok(Box::new(Visualizer {
                 audio_data,
                 adsr,
-                wave,
+                waves,
                 filter_select: filter::FilterTypes::High,
                 filters,
                 filter_cutoff: 0.0,
