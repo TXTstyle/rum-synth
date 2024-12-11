@@ -1,10 +1,12 @@
+use crate::NoteState;
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone)]
+/// An ADSR envelope. Currently only using linear interpolation.
 pub struct ADSR {
-    pub attack: f32,
-    pub decay: f32,
-    pub sustain: f32,
-    pub release: f32,
+    pub attack: f32, //time to reach peak volume
+    pub decay: f32, //time to reach sustain volume
+    pub sustain: f32, //volume during the main part of the sound (WHAT UNIT?)
+    pub release: f32, //time to reach 0 volume
 }
 
 impl ADSR {
@@ -17,24 +19,21 @@ impl ADSR {
         }
     }
 
-    pub fn apply(&self, time: f32, note_on: bool, note_off_time: Option<f32>) -> f32 {
-        if note_on {
-            if time < self.attack {
-                time / self.attack
-            } else if time < self.attack + self.decay {
-                self.sustain + (1.0 - self.sustain) * (1.0 - (time - self.attack) / self.decay)
+    pub fn apply(&self, note_state: &NoteState) -> f32 {
+        if note_state.active {
+            if note_state.time < self.attack {
+                note_state.time / self.attack
+            } else if note_state.time < self.attack + self.decay {
+                self.sustain + (1.0 - self.sustain) * (1.0 - (note_state.time - self.attack) / self.decay)
             } else {
                 self.sustain
             }
-        } else if let Some(note_off_time) = note_off_time {
-            let release_time = time - note_off_time;
-            if release_time < self.release {
-                self.sustain * (1.0 - release_time / self.release)
+        } else {
+            if note_state.time < self.release {
+                self.sustain * (1.0 - note_state.time / self.release)
             } else {
                 0.0
             }
-        } else {
-            0.0
         }
     }
 }

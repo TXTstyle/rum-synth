@@ -14,17 +14,36 @@ use std::{
 use visualizer::{Visualizer, WindowState};
 use waveform::{Wave, Waveform};
 
+/// The state of a note.
+/// time represents the time since the note changed state.
+#[derive(Debug, Clone)]
 pub struct NoteState {
-    pub note_on: bool,
-    pub note_off_time: Option<f32>,
+    active: bool,
+    time: f32,
 }
 
 impl Default for NoteState {
     fn default() -> Self {
         Self {
-            note_on: false,
-            note_off_time: None,
+            active: false,
+            time: 0.0,
         }
+    }
+}
+
+impl NoteState {
+    pub fn note_on(&mut self) {
+        self.active = true;
+        self.time = 0.0;
+    }
+
+    pub fn note_off(&mut self) {
+        self.active = false;
+        self.time = 0.0;
+    }
+
+    pub fn update(&mut self, delta_time: f32) {
+        self.time += delta_time;
     }
 }
 
@@ -70,11 +89,12 @@ fn main() -> Result<(), eframe::Error> {
 
                     local_data.clear();
                     for sample in data.iter_mut() {
-                        let time = time_sec;
+                        let _time = time_sec;
 
                         *sample = local_wave.apply(phase);
-
-                        *sample *= local_adsr.apply(time, local_note.note_on, local_note.note_off_time);
+                        
+                        let adsr = local_adsr.apply(&*local_note);
+                        *sample *= adsr;
                         for filter in local_filters.iter_mut() {
                             *sample = filter.apply(*sample);
                         }
@@ -82,13 +102,9 @@ fn main() -> Result<(), eframe::Error> {
                         local_data.push(*sample);
 
                         phase = (phase + local_wave.frequency / sample_rate) % 1.0;
-                        time_sec += 1.0 / sample_rate;
-                        
-                        if let Some(off_time) = local_note.note_off_time {
-                            if off_time == 1.0 {
-                                local_note.note_off_time = Some(time_sec);
-                            }
-                        }
+                        let delta_time = 1.0 / sample_rate;
+                        time_sec += delta_time;
+                        local_note.update(delta_time);
                     }
                 },
                 |err| eprintln!("Error occurred: {}", err),
@@ -115,6 +131,7 @@ fn main() -> Result<(), eframe::Error> {
                 filter_cutoff: 0.0,
                 window_state: WindowState::default(),
                 note_state,
+                key_down: false,
             }))
         }),
     )
