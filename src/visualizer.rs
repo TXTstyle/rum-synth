@@ -29,7 +29,7 @@ impl Default for WindowState {
 pub struct Visualizer {
     pub audio_data: Arc<Mutex<Vec<f32>>>,
     pub adsr: Arc<Mutex<ADSR>>,
-    pub wave: Arc<Mutex<Wave>>,
+    pub waves: Arc<Mutex<Vec<Wave>>>,
     pub filters: Arc<Mutex<Vec<Box<dyn Filter + Send + Sync>>>>,
     pub filter_select: FilterTypes,
     pub filter_cutoff: f32,
@@ -95,8 +95,9 @@ impl eframe::App for Visualizer {
         });
 
         let mut adsr = self.adsr.lock().unwrap();
-        let mut wave = self.wave.lock().unwrap();
+        let mut waves = self.waves.lock().unwrap();
         let mut filters = self.filters.lock().unwrap();
+        let sample_rate = waves.first().unwrap().sample_rate;
 
         egui::Window::new("ADSR")
             .open(&mut self.window_state.adsr)
@@ -108,19 +109,39 @@ impl eframe::App for Visualizer {
                 ui.add(egui::Slider::new(&mut adsr.release, 0.0..=2.0).text("Release: "));
             });
 
-        egui::Window::new("Waveform")
+        egui::Window::new("Waveforms")
             .open(&mut self.window_state.wave)
             .show(ctx, |ui| {
-                ui.label("Waveform");
-                egui::ComboBox::from_label("Type")
-                    .selected_text(format!("{:?}", &wave.waveform))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut wave.waveform, Waveform::Sine, "Sine");
-                        ui.selectable_value(&mut wave.waveform, Waveform::Square, "Square");
-                        ui.selectable_value(&mut wave.waveform, Waveform::Sawtooth, "Sawtooth");
-                    });
-                ui.label("Frequency");
-                ui.add(egui::Slider::new(&mut wave.frequency, 0.0..=1000.0));
+                let mut to_remove = vec![];
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for (idx, wave) in waves.iter_mut().enumerate() {
+                        ui.label(format!("{:?} {}: {}Hz", wave.waveform, idx, wave.frequency));
+                        egui::ComboBox::from_label(format!("{:?} {} type", wave.waveform, idx))
+                            .selected_text(format!("{:?}", &wave.waveform))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut wave.waveform, Waveform::Sine, "Sine");
+                                ui.selectable_value(&mut wave.waveform, Waveform::Square, "Square");
+                                ui.selectable_value(
+                                    &mut wave.waveform,
+                                    Waveform::Sawtooth,
+                                    "Sawtooth",
+                                );
+                            });
+                        ui.label("Frequency");
+                        ui.add(egui::Slider::new(&mut wave.frequency, 0.0..=1000.0));
+                        if idx != 0 && ui.button("Remove").clicked() {
+                            to_remove.push(idx);
+                        }
+                    }
+                });
+
+                if ui.button("Add").clicked() {
+                    waves.push(Wave::new(440.0, sample_rate, Waveform::Sine));
+                }
+
+                to_remove.iter().for_each(|i| {
+                    waves.remove(*i);
+                });
             });
 
         egui::Window::new("Filters")
@@ -140,10 +161,10 @@ impl eframe::App for Visualizer {
                 if ui.add(egui::Button::new("Add Filter")).clicked() {
                     let filter: Box<dyn Filter + Send + Sync> = match self.filter_select {
                         FilterTypes::High => {
-                            Box::new(HighPassFilter::new(self.filter_cutoff, wave.sample_rate))
+                            Box::new(HighPassFilter::new(self.filter_cutoff, sample_rate))
                         }
                         FilterTypes::Low => {
-                            Box::new(LowPassFilter::new(self.filter_cutoff, wave.sample_rate))
+                            Box::new(LowPassFilter::new(self.filter_cutoff, sample_rate))
                         }
                     };
                     filters.push(filter);
