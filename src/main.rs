@@ -14,6 +14,20 @@ use std::{
 use visualizer::{Visualizer, WindowState};
 use waveform::{Wave, Waveform};
 
+pub struct NoteState {
+    pub note_on: bool,
+    pub note_off_time: Option<f32>,
+}
+
+impl Default for NoteState {
+    fn default() -> Self {
+        Self {
+            note_on: false,
+            note_off_time: None,
+        }
+    }
+}
+
 fn main() -> Result<(), eframe::Error> {
     let audio_data = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let adsr = ADSR::new(0.8, 1.2, 0.5, 0.8);
@@ -36,13 +50,13 @@ fn main() -> Result<(), eframe::Error> {
     let wave = Arc::new(Mutex::new(wave));
     let wave_data_clone = wave.clone();
 
+    let note_state = NoteState::default();
+    let note_state = Arc::new(Mutex::new(note_state));
+    let note_data_clone = note_state.clone();
+
     std::thread::spawn(move || {
         let mut phase = 0.0;
         let mut time_sec = 0.0;
-
-        let mut note_on = true;
-        let mut note_off_time = None;
-        let mut last_note_time = 0.0;
 
         let stream = device
             .build_output_stream(
@@ -52,13 +66,15 @@ fn main() -> Result<(), eframe::Error> {
                     let local_adsr = adsr_data_clone.lock().unwrap();
                     let local_wave = wave_data_clone.lock().unwrap();
                     let mut local_filters = filters_data_clone.lock().unwrap();
+                    let mut local_note = note_data_clone.lock().unwrap();
+
                     local_data.clear();
                     for sample in data.iter_mut() {
                         let time = time_sec;
 
                         *sample = local_wave.apply(phase);
 
-                        *sample *= local_adsr.apply(time, note_on, note_off_time);
+                        *sample *= local_adsr.apply(time, local_note.note_on, local_note.note_off_time);
                         for filter in local_filters.iter_mut() {
                             *sample = filter.apply(*sample);
                         }
@@ -67,16 +83,11 @@ fn main() -> Result<(), eframe::Error> {
 
                         phase = (phase + local_wave.frequency / sample_rate) % 1.0;
                         time_sec += 1.0 / sample_rate;
-
-                        if note_on && (time - last_note_time) > 2.0 {
-                            note_on = false;
-                            note_off_time = Some(time_sec);
-                        }
-
-                        if !note_on && (time - last_note_time) > 5.0 {
-                            note_on = true;
-                            note_off_time = None;
-                            last_note_time = time_sec;
+                        
+                        if let Some(off_time) = local_note.note_off_time {
+                            if off_time == 1.0 {
+                                local_note.note_off_time = Some(time_sec);
+                            }
                         }
                     }
                 },
@@ -103,6 +114,7 @@ fn main() -> Result<(), eframe::Error> {
                 filters,
                 filter_cutoff: 0.0,
                 window_state: WindowState::default(),
+                note_state,
             }))
         }),
     )

@@ -8,6 +8,7 @@ use crate::filter::HighPassFilter;
 use crate::filter::LowPassFilter;
 use crate::waveform::Wave;
 use crate::waveform::Waveform;
+use crate::NoteState;
 
 pub struct WindowState {
     adsr: bool,
@@ -33,6 +34,7 @@ pub struct Visualizer {
     pub filter_select: FilterTypes,
     pub filter_cutoff: f32,
     pub window_state: WindowState,
+    pub note_state: Arc<Mutex<NoteState>>,
 }
 
 impl eframe::App for Visualizer {
@@ -160,6 +162,18 @@ impl eframe::App for Visualizer {
                     filters.remove(*i);
                 });
             });
+
+        let mut note_state = self.note_state.lock().unwrap();
+
+        if ctx.input(|i| i.key_pressed(egui::Key::A)) {
+            note_state.note_on = true;
+            note_state.note_off_time = None;
+        }
+
+        if ctx.input(|i| i.key_released(egui::Key::A)) {
+            note_state.note_on = false;
+            note_state.note_off_time = Some(1.0);
+        }
 
         ctx.request_repaint();
     }
