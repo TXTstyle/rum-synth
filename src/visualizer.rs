@@ -1,6 +1,11 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use egui::pos2;
+use egui::vec2;
+use egui::Align2;
+use egui::Window;
+
 use crate::adsr::ADSR;
 use crate::filter::Filter;
 use crate::filter::FilterTypes;
@@ -98,7 +103,7 @@ impl eframe::App for Visualizer {
         let mut wave = self.wave.lock().unwrap();
         let mut filters = self.filters.lock().unwrap();
 
-        egui::Window::new("ADSR")
+        Window::new("ADSR")
             .open(&mut self.window_state.adsr)
             .show(ctx, |ui| {
                 ui.label("ADSR");
@@ -108,7 +113,7 @@ impl eframe::App for Visualizer {
                 ui.add(egui::Slider::new(&mut adsr.release, 0.0..=2.0).text("Release: "));
             });
 
-        egui::Window::new("Waveform")
+        Window::new("Waveform")
             .open(&mut self.window_state.wave)
             .show(ctx, |ui| {
                 ui.label("Waveform");
@@ -123,7 +128,7 @@ impl eframe::App for Visualizer {
                 ui.add(egui::Slider::new(&mut wave.frequency, 0.0..=1000.0));
             });
 
-        egui::Window::new("Filters")
+        Window::new("Filters")
             .open(&mut self.window_state.filters)
             .show(ctx, |ui| {
                 egui::ComboBox::from_label("Type")
@@ -166,14 +171,18 @@ impl eframe::App for Visualizer {
         let mut note_state = self.note_state.lock().unwrap();
 
         if ctx.input(|i| i.key_pressed(egui::Key::A)) {
-            note_state.note_on = true;
-            note_state.note_off_time = None;
+            note_state.note_on();
         }
 
         if ctx.input(|i| i.key_released(egui::Key::A)) {
-            note_state.note_on = false;
-            note_state.note_off_time = Some(1.0);
+            note_state.note_off();
         }
+        
+        egui::Area::new(egui::Id::new("DEBUG"))
+        .anchor(Align2::RIGHT_BOTTOM, vec2(0.0,0.0))
+        .show(ctx, |ui| {
+            ui.label(format!("Note State: {:?}", *note_state));
+        });
 
         ctx.request_repaint();
     }
