@@ -9,6 +9,22 @@ use crate::filter::LowPassFilter;
 use crate::waveform::Wave;
 use crate::waveform::Waveform;
 
+pub struct WindowState {
+    adsr: bool,
+    wave: bool,
+    filters: bool,
+}
+
+impl Default for WindowState {
+    fn default() -> Self {
+        WindowState {
+            adsr: true,
+            wave: true,
+            filters: true,
+        }
+    }
+}
+
 pub struct Visualizer {
     pub audio_data: Arc<Mutex<Vec<f32>>>,
     pub adsr: Arc<Mutex<ADSR>>,
@@ -16,10 +32,27 @@ pub struct Visualizer {
     pub filters: Arc<Mutex<Vec<Box<dyn Filter + Send + Sync>>>>,
     pub filter_select: FilterTypes,
     pub filter_cutoff: f32,
+    pub window_state: WindowState,
 }
 
 impl eframe::App for Visualizer {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::TopBottomPanel::top("Top").show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("Window", |ui| {
+                    if ui.button("ADSR").clicked() {
+                        self.window_state.adsr = !self.window_state.adsr;
+                    }
+                    if ui.button("Waveform").clicked() {
+                        self.window_state.wave = !self.window_state.wave;
+                    }
+                    if ui.button("Filters").clicked() {
+                        self.window_state.filters = !self.window_state.filters;
+                    }
+                })
+            });
+        });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.label("Waveform Visualizer");
 
@@ -63,60 +96,70 @@ impl eframe::App for Visualizer {
         let mut wave = self.wave.lock().unwrap();
         let mut filters = self.filters.lock().unwrap();
 
-        egui::Window::new("ADSR").show(ctx, |ui| {
-            ui.label("ADSR");
-            ui.add(egui::Slider::new(&mut adsr.attack, 0.0..=2.0).text("Attack: "));
-            ui.add(egui::Slider::new(&mut adsr.decay, 0.0..=2.0).text("Decay: "));
-            ui.add(egui::Slider::new(&mut adsr.sustain, 0.0..=1.0).text("Sustain: "));
-            ui.add(egui::Slider::new(&mut adsr.release, 0.0..=2.0).text("Release: "));
-        });
+        egui::Window::new("ADSR")
+            .open(&mut self.window_state.adsr)
+            .show(ctx, |ui| {
+                ui.label("ADSR");
+                ui.add(egui::Slider::new(&mut adsr.attack, 0.0..=2.0).text("Attack: "));
+                ui.add(egui::Slider::new(&mut adsr.decay, 0.0..=2.0).text("Decay: "));
+                ui.add(egui::Slider::new(&mut adsr.sustain, 0.0..=1.0).text("Sustain: "));
+                ui.add(egui::Slider::new(&mut adsr.release, 0.0..=2.0).text("Release: "));
+            });
 
-        egui::Window::new("Waveform").show(ctx, |ui| {
-            ui.label("Waveform");
-            egui::ComboBox::from_label("Type")
-                .selected_text(format!("{:?}", &wave.waveform))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut wave.waveform, Waveform::Sine, "Sine");
-                    ui.selectable_value(&mut wave.waveform, Waveform::Square, "Square");
-                    ui.selectable_value(&mut wave.waveform, Waveform::Sawtooth, "Sawtooth");
-                });
-            ui.label("Frequency");
-            ui.add(egui::Slider::new(&mut wave.frequency, 0.0..=1000.0));
-        });
+        egui::Window::new("Waveform")
+            .open(&mut self.window_state.wave)
+            .show(ctx, |ui| {
+                ui.label("Waveform");
+                egui::ComboBox::from_label("Type")
+                    .selected_text(format!("{:?}", &wave.waveform))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut wave.waveform, Waveform::Sine, "Sine");
+                        ui.selectable_value(&mut wave.waveform, Waveform::Square, "Square");
+                        ui.selectable_value(&mut wave.waveform, Waveform::Sawtooth, "Sawtooth");
+                    });
+                ui.label("Frequency");
+                ui.add(egui::Slider::new(&mut wave.frequency, 0.0..=1000.0));
+            });
 
-        egui::Window::new("Filter").show(ctx, |ui| {
-            egui::ComboBox::from_label("Type")
-                .selected_text(format!("{:?}", &self.filter_select))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.filter_select, FilterTypes::High, "High pass");
-                    ui.selectable_value(&mut self.filter_select, FilterTypes::Low, "Low pass");
-                });
-            ui.add(egui::Slider::new(&mut self.filter_cutoff, 0.0..=1000.0));
-            if ui.add(egui::Button::new("Add Filter")).clicked() {
-                let filter: Box<dyn Filter + Send + Sync> = match self.filter_select {
-                    FilterTypes::High => {
-                        Box::new(HighPassFilter::new(self.filter_cutoff, wave.sample_rate))
-                    }
-                    FilterTypes::Low => {
-                        Box::new(LowPassFilter::new(self.filter_cutoff, wave.sample_rate))
-                    }
-                };
-                filters.push(filter);
-            }
-
-            let mut to_remove = vec![];
-
-            ui.collapsing("Filters: ", |ui| {
-                for (i, _) in filters.iter().enumerate() {
-                    if ui.add(egui::Button::new(format!("{}: ", i))).clicked() {
-                        to_remove.push(i);
-                    }
+        egui::Window::new("Filters")
+            .open(&mut self.window_state.filters)
+            .show(ctx, |ui| {
+                egui::ComboBox::from_label("Type")
+                    .selected_text(format!("{:?}", &self.filter_select))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.filter_select,
+                            FilterTypes::High,
+                            "High pass",
+                        );
+                        ui.selectable_value(&mut self.filter_select, FilterTypes::Low, "Low pass");
+                    });
+                ui.add(egui::Slider::new(&mut self.filter_cutoff, 0.0..=1000.0));
+                if ui.add(egui::Button::new("Add Filter")).clicked() {
+                    let filter: Box<dyn Filter + Send + Sync> = match self.filter_select {
+                        FilterTypes::High => {
+                            Box::new(HighPassFilter::new(self.filter_cutoff, wave.sample_rate))
+                        }
+                        FilterTypes::Low => {
+                            Box::new(LowPassFilter::new(self.filter_cutoff, wave.sample_rate))
+                        }
+                    };
+                    filters.push(filter);
                 }
+
+                let mut to_remove = vec![];
+
+                ui.collapsing("Filters: ", |ui| {
+                    for (i, _) in filters.iter().enumerate() {
+                        if ui.add(egui::Button::new(format!("{}: ", i))).clicked() {
+                            to_remove.push(i);
+                        }
+                    }
+                });
+                to_remove.iter().for_each(|i| {
+                    filters.remove(*i);
+                });
             });
-            to_remove.iter().for_each(|i| {
-                filters.remove(*i);
-            });
-        });
 
         ctx.request_repaint();
     }

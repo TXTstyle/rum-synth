@@ -11,7 +11,7 @@ use std::{
     thread,
     time::Duration,
 };
-use visualizer::Visualizer;
+use visualizer::{Visualizer, WindowState};
 use waveform::{Wave, Waveform};
 
 fn main() -> Result<(), eframe::Error> {
@@ -24,7 +24,6 @@ fn main() -> Result<(), eframe::Error> {
     let audio_data_clone = audio_data.clone();
     let adsr_data_clone = adsr.clone();
     let filters_data_clone = filters.clone();
-
 
     let host = cpal::default_host();
     let device = host
@@ -103,6 +102,7 @@ fn main() -> Result<(), eframe::Error> {
                 filter_select: filter::FilterTypes::High,
                 filters,
                 filter_cutoff: 0.0,
+                window_state: WindowState::default(),
             }))
         }),
     )
